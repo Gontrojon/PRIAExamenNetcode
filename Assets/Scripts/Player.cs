@@ -60,7 +60,7 @@ public class Player : NetworkBehaviour
 
     private void OnPlayerColorChanged(Color previousValue, Color newValue)
     {
-        rend.material.color = ColorPlayer.Value;
+        rend.material.color = newValue;
     }
 
     [ServerRpc]
@@ -81,17 +81,40 @@ public class Player : NetworkBehaviour
     }
 
     [ServerRpc]
-    void ColorSinEquipoServerRpc(ServerRpcParams rpcParams = default)
+    void ColorEquipoServerRpc(int team, ServerRpcParams rpcParams = default)
+    {
+        // se usa un switch para capturar los casos y dependiendo del team al que pertenece se hace la llamada al metodo de equipo correspondiente
+        switch (team)
+        {
+            case 0:
+                Sinequipo(rpcParams.Receive.SenderClientId);
+                break;
+            case 1:
+                Equipo1();
+                break;
+            case 2:
+                Equipo2();
+                Debug.Log("se llama a equipo 2");
+                break;
+        }
+
+
+    }
+
+    void Sinequipo(ulong clientid)
     {
         // se asigna el color sin equipo
         ColorPlayer.Value = playerColorSinTeam;
         // se comprueba al equipo que pertenece para restarlo
-        if (NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(rpcParams.Receive.SenderClientId).GetComponent<Player>().myTeam == 1)
+        Debug.Log("mi equipoe es : " + NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientid).GetComponent<Player>().myTeam);
+        if (NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientid).GetComponent<Player>().myTeam == 1)
         {
+            Debug.Log("Se resta en el equipo 1");
             team1Size--;
         }
-        else if (NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(rpcParams.Receive.SenderClientId).GetComponent<Player>().myTeam == 2)
+        else if (NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientid).GetComponent<Player>().myTeam == 2)
         {
+            Debug.Log("Se resta en el equipo 2");
             team2Size--;
         }
         // si en la resta ya no hay el numeor maximo en algun equipo se libera el movmiento
@@ -100,11 +123,10 @@ public class Player : NetworkBehaviour
             CanMoveFreeClientRpc();
         }
         // se le asigna que pertece a sin equipo
-        NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(rpcParams.Receive.SenderClientId).GetComponent<Player>().myTeam = 0;
+        NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientid).GetComponent<Player>().myTeam = 0;
     }
 
-    [ServerRpc]
-    void ColorEquipo1ServerRpc(ServerRpcParams rpcParams = default)
+    void Equipo1()
     {
         // se suma 1 al tamaño del equipo
         team1Size++;
@@ -122,12 +144,11 @@ public class Player : NetworkBehaviour
                 }
             };
 
-            CanMoveRestrictClientRpc();
+            CanMoveRestrictClientRpc(clientRpcParams);
         }
     }
 
-    [ServerRpc]
-    void ColorEquipo2ServerRpc(ServerRpcParams rpcParams = default)
+    void Equipo2()
     {
         // se suma 1 al tamaño del equipo
         team2Size++;
@@ -136,6 +157,7 @@ public class Player : NetworkBehaviour
         // si se alcanza el maximo de miembros de equipo se restringe el movimiento
         if (team2Size == maxTeamSize)
         {
+            Debug.Log("se alcanzo tamaño maximo de jugadores");
             // creacion de parametros para que solo los del equipo se puedan mover
             ClientRpcParams clientRpcParams = new ClientRpcParams
             {
@@ -144,8 +166,8 @@ public class Player : NetworkBehaviour
                     TargetClientIds = GetIdTeams(2)
                 }
             };
-
-            CanMoveRestrictClientRpc();
+            Debug.Log("Se procede a realizar el clientrpc");
+            CanMoveRestrictClientRpc(clientRpcParams);
         }
     }
 
@@ -173,6 +195,20 @@ public class Player : NetworkBehaviour
     [ClientRpc]
     void CanMoveRestrictClientRpc(ClientRpcParams clientRpcParams = default)
     {
+        if (clientRpcParams.Send.TargetClientIds == null)
+        {
+            Debug.Log(" el contenido de los clientRpcParams es null");
+        }
+
+        foreach (ulong ide in clientRpcParams.Send.TargetClientIds)
+        {
+            Debug.Log("bulce de movimiento");
+            if (ide != NetworkObjectId)
+            {
+                canMove = false;
+            }
+        }
+        /*
         List<ulong> u = (List<ulong>)clientRpcParams.Send.TargetClientIds;
         if (u == null)
         {
@@ -181,7 +217,7 @@ public class Player : NetworkBehaviour
         if (!u.Contains(NetworkObjectId))
         {
             canMove = false;
-        }
+        }*/
         
     }
 
@@ -243,25 +279,25 @@ public class Player : NetworkBehaviour
     {
         if (IsOwner)
         {
-            //Dependiendo del collider con el que entre en colision el usuario se llama al serverpc correspondiente
+            //Dependiendo del collider con el que entre en colision el usuario se llama al serverpc pasando el equipo al que pertenece
             if (collision.gameObject.CompareTag("SinEquipo"))
             {
                 Debug.Log("sin equipo");
-                ColorSinEquipoServerRpc();
+                ColorEquipoServerRpc(0);
             }
 
             if (collision.gameObject.CompareTag("Equipo1"))
             {
                 Debug.Log(" equipo 1");
                 myTeam = 1;
-                ColorEquipo1ServerRpc();
+                ColorEquipoServerRpc(myTeam);
             }
 
             if (collision.gameObject.CompareTag("Equipo2"))
             {
                 Debug.Log(" equipo 2");
                 myTeam = 2;
-                ColorEquipo2ServerRpc();
+                ColorEquipoServerRpc(myTeam);
             }
         }
     }
