@@ -7,6 +7,7 @@ public class Player : NetworkBehaviour
 {
     // variable network para almacenar el color del player
     public NetworkVariable<Color> ColorPlayer;
+    public NetworkVariable<int> MyTeam;
 
     // lista con los materiales de los colores que puede ser el player segun el Team
     public List<Color> playerColorsTeam1;
@@ -14,7 +15,10 @@ public class Player : NetworkBehaviour
     // color que se asigna a los que no tienen team
     public Color playerColorSinTeam;
     // variable para guardar el equipo al que pertenece 0 = sin equipo, 1= equipo 1, 2 = equipo 2
-    public int myTeam;
+    private const int SIN_TEAM_ID = 0;
+    private const int TEAM1_ID = 1;
+    private const int TEAM2_ID = 2;
+    public int oldTeam;
 
     // lista que se usara para clonar y saber que colores disponibles hay
     private List<Color> disponibles;
@@ -26,25 +30,27 @@ public class Player : NetworkBehaviour
     // velocidad de desplazamiento
     private float speed = 5f;
 
-    // variables para controlar los tama�os de teams
+    // variables para controlar los tamaños de teams
     private static int team1Size = 0;
     private static int team2Size = 0;
-    private static int maxTeamSize = 2;
+    private const int MAX_TEAM_SIZE = 1;
 
     private void Awake()
     {
         rend = GetComponent<Renderer>();
         canMove = true;
-        myTeam = 0;
+        oldTeam = 0;
     }
 
     public override void OnNetworkSpawn()
     {
         ColorPlayer.OnValueChanged += OnPlayerColorChanged;
+        MyTeam.OnValueChanged += OnMyTeamChanged;
 
         if (IsOwner)
         {
             MoverAlInicioServerRpc();
+            MyTeam.Value = 0;
         }
 
         if (!IsOwner)
@@ -56,6 +62,7 @@ public class Player : NetworkBehaviour
     public override void OnNetworkDespawn()
     {
         ColorPlayer.OnValueChanged -= OnPlayerColorChanged;
+        MyTeam.OnValueChanged -= OnMyTeamChanged;
     }
 
     private void OnPlayerColorChanged(Color previousValue, Color newValue)
@@ -63,12 +70,19 @@ public class Player : NetworkBehaviour
         rend.material.color = newValue;
     }
 
+    private void OnMyTeamChanged(int previousValue, int newValue)
+    {
+        oldTeam = previousValue;
+    }
+
+
     [ServerRpc]
     public void MoverAlInicioServerRpc(ServerRpcParams rpcParams = default)
     {
         if (NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(rpcParams.Receive.SenderClientId).GetComponent<Player>().canMove)
         {
             transform.position = GetRandomInicioPosition();
+
         }
 
     }
@@ -81,20 +95,24 @@ public class Player : NetworkBehaviour
     }
 
     [ServerRpc]
-    void ColorEquipoServerRpc(int team, ServerRpcParams rpcParams = default)
+    void ColorEquipoServerRpc(int teamid, ServerRpcParams rpcParams = default)
     {
+        MyTeam.Value = teamid;
+        Debug.Log("mi equipoe es : " + MyTeam.Value);
         // se usa un switch para capturar los casos y dependiendo del team al que pertenece se hace la llamada al metodo de equipo correspondiente
-        switch (team)
+        switch (MyTeam.Value)
         {
             case 0:
+                Debug.Log("se llama a sin equipo");
                 Sinequipo(rpcParams.Receive.SenderClientId);
                 break;
             case 1:
+                Debug.Log("se llama a equipo 1");
                 Equipo1();
                 break;
             case 2:
-                Equipo2();
                 Debug.Log("se llama a equipo 2");
+                Equipo2();
                 break;
         }
 
@@ -105,42 +123,45 @@ public class Player : NetworkBehaviour
     {
         // se asigna el color sin equipo
         ColorPlayer.Value = playerColorSinTeam;
+
+        int oldTeam = NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientid).GetComponent<Player>().oldTeam;
         // se comprueba al equipo que pertenece para restarlo
-        Debug.Log("mi equipoe es : " + NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientid).GetComponent<Player>().myTeam);
-        if (NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientid).GetComponent<Player>().myTeam == 1)
+        Debug.Log("funcion sin equipo mi equipo es: " + MyTeam.Value);
+        Debug.Log("mi antiguo equipo es: " + oldTeam);
+        if (oldTeam == TEAM1_ID)
         {
             Debug.Log("Se resta en el equipo 1");
             team1Size--;
         }
-        else if (NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientid).GetComponent<Player>().myTeam == 2)
+        else if (oldTeam == TEAM2_ID)
         {
             Debug.Log("Se resta en el equipo 2");
             team2Size--;
         }
         // si en la resta ya no hay el numeor maximo en algun equipo se libera el movmiento
-        if (team1Size < maxTeamSize || team2Size < maxTeamSize)
+        if (team1Size < MAX_TEAM_SIZE || team2Size < MAX_TEAM_SIZE)
         {
             CanMoveFreeClientRpc();
         }
         // se le asigna que pertece a sin equipo
-        NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientid).GetComponent<Player>().myTeam = 0;
+        MyTeam.Value = 0;
     }
 
     void Equipo1()
     {
-        // se suma 1 al tama�o del equipo
+        // se suma 1 al tamaño del equipo
         team1Size++;
         // se le asigna un color aleatorio de los de su equipo
         ColorPlayer.Value = ColorDisponibleLista(playerColorsTeam1);
         // si se alcanza el maximo de miembros de equipo se restringe el movimiento
-        if (team1Size == maxTeamSize)
+        if (team1Size == MAX_TEAM_SIZE)
         {
             // creacion de parametros para que solo los del equipo se puedan mover
             ClientRpcParams clientRpcParams = new ClientRpcParams
             {
                 Send = new ClientRpcSendParams
                 {
-                    TargetClientIds = GetIdTeams(1)
+                    TargetClientIds = GetIdTeams(TEAM1_ID)
                 }
             };
 
@@ -150,22 +171,27 @@ public class Player : NetworkBehaviour
 
     void Equipo2()
     {
-        // se suma 1 al tama�o del equipo
+        // se suma 1 al tamaño del equipo
         team2Size++;
         // se le asigna un color aleatorio de los de su equipo
         ColorPlayer.Value = ColorDisponibleLista(playerColorsTeam2);
         // si se alcanza el maximo de miembros de equipo se restringe el movimiento
-        if (team2Size == maxTeamSize)
+        if (team2Size == MAX_TEAM_SIZE)
         {
-            Debug.Log("se alcanzo tama�o maximo de jugadores");
+            Debug.Log("se alcanzo tamaño maximo de jugadores");
             // creacion de parametros para que solo los del equipo se puedan mover
             ClientRpcParams clientRpcParams = new ClientRpcParams
             {
                 Send = new ClientRpcSendParams
                 {
-                    TargetClientIds = GetIdTeams(2)
+                    TargetClientIds = GetIdTeams(TEAM2_ID)
                 }
             };
+            if (clientRpcParams.Send.TargetClientIds == null)
+            {
+                Debug.Log("el contenido es null y no se envian ids");
+            }
+
             Debug.Log("Se procede a realizar el clientrpc");
             CanMoveRestrictClientRpc(clientRpcParams);
         }
@@ -176,8 +202,9 @@ public class Player : NetworkBehaviour
         List<ulong> teamids = new List<ulong>();
         foreach (ulong uid in NetworkManager.Singleton.ConnectedClientsIds)
         {
-            if (NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(uid).GetComponent<Player>().myTeam == team)
+            if (NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(uid).GetComponent<Player>().MyTeam.Value == team)
             {
+                Debug.Log("se añadio el id: " + uid);
                 teamids.Add(uid);
             }
 
@@ -195,30 +222,33 @@ public class Player : NetworkBehaviour
     [ClientRpc]
     void CanMoveRestrictClientRpc(ClientRpcParams clientRpcParams = default)
     {
-        if (clientRpcParams.Send.TargetClientIds == null)
+        //Debug.Log(clientRpcParams.Send.TargetClientIds[0]);
+        if (clientRpcParams.Send.TargetClientIds.Count == 0)
         {
-            Debug.Log(" el contenido de los clientRpcParams es null");
-        }
-
-        foreach (ulong ide in clientRpcParams.Send.TargetClientIds)
-        {
-            Debug.Log("bulce de movimiento");
-            if (ide != NetworkObjectId)
-            {
-                canMove = false;
-            }
+            Debug.Log(" el contenido de los clientRpcParams es NULL *********************************");
         }
         /*
-        List<ulong> u = (List<ulong>)clientRpcParams.Send.TargetClientIds;
-        if (u == null)
+        foreach (ulong ide in clientRpcParams.Send.TargetClientIds)
         {
-            return;
-        }
-        if (!u.Contains(NetworkObjectId))
-        {
-            canMove = false;
+            Debug.Log("bulce de movimiento, mi ide es: " + OwnerClientId + " los ide de clientes que se mueven " + ide);
+            if (ide != OwnerClientId)
+            {
+                Debug.Log("no se mueve");
+                canMove = false;
+            }else if (ide == OwnerClientId)
+            {
+                Debug.Log("se mueve");
+                canMove = true;
+            }
         }*/
         
+        List<ulong> u = (List<ulong>)clientRpcParams.Send.TargetClientIds;
+        Debug.Log("id de la posicion 0 es: " + u[0]);
+        if (!u.Contains(OwnerClientId))
+        {
+            canMove = false;
+        }
+
     }
 
     public void Mover()
@@ -233,7 +263,7 @@ public class Player : NetworkBehaviour
         // se recorre los clientes conectados para guardar los colores que estan usando
         foreach (ulong uid in NetworkManager.Singleton.ConnectedClientsIds)
         {
-            // se a�ade a la lista
+            // se añade a la lista
             coloresUsados.Add(NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(uid).GetComponent<Player>().ColorPlayer.Value);
         }
         // se hace un clon de la lista completa de colores
@@ -241,9 +271,9 @@ public class Player : NetworkBehaviour
         // Se elimina los colores que se han usado
         disponibles.RemoveAll(coloresUsados.Contains);
         /* 
-         * Como esta parametrizado el tama�o de los equipos y solo hay 3 colores
-         * si se asigna un numero mayor a 3 al tam�o de equipo el restante seran siempre negro
-         * en caso de que no se quiera este comportamiento habria que a�adir mas colores en el prefab del player
+         * Como esta parametrizado el tamaño de los equipos y solo hay 3 colores
+         * si se asigna un numero mayor a 3 al tamño de equipo el restante seran siempre negro
+         * en caso de que no se quiera este comportamiento habria que añadir mas colores en el prefab del player
          */
         if (disponibles.Count == 0)
         {
@@ -283,21 +313,22 @@ public class Player : NetworkBehaviour
             if (collision.gameObject.CompareTag("SinEquipo"))
             {
                 Debug.Log("sin equipo");
-                ColorEquipoServerRpc(0);
+                //MyTeam.Value = SIN_TEAM_ID;
+                ColorEquipoServerRpc(SIN_TEAM_ID);
             }
 
             if (collision.gameObject.CompareTag("Equipo1"))
             {
                 Debug.Log(" equipo 1");
-                myTeam = 1;
-                ColorEquipoServerRpc(myTeam);
+                //MyTeam.Value = TEAM1_ID;
+                ColorEquipoServerRpc(TEAM1_ID);
             }
 
             if (collision.gameObject.CompareTag("Equipo2"))
             {
                 Debug.Log(" equipo 2");
-                myTeam = 2;
-                ColorEquipoServerRpc(myTeam);
+                //MyTeam.Value = TEAM2_ID;
+                ColorEquipoServerRpc(TEAM2_ID);
             }
         }
     }
