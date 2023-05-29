@@ -156,16 +156,7 @@ public class Player : NetworkBehaviour
         // si se alcanza el maximo de miembros de equipo se restringe el movimiento
         if (team1Size == MAX_TEAM_SIZE)
         {
-            // creacion de parametros para que solo los del equipo se puedan mover
-            ClientRpcParams clientRpcParams = new ClientRpcParams
-            {
-                Send = new ClientRpcSendParams
-                {
-                    TargetClientIds = GetIdTeams(TEAM1_ID)
-                }
-            };
-
-            CanMoveRestrictClientRpc(clientRpcParams);
+            RestrictMovement(TEAM1_ID);
         }
     }
 
@@ -178,23 +169,28 @@ public class Player : NetworkBehaviour
         // si se alcanza el maximo de miembros de equipo se restringe el movimiento
         if (team2Size == MAX_TEAM_SIZE)
         {
-            Debug.Log("se alcanzo tamaño maximo de jugadores");
-            // creacion de parametros para que solo los del equipo se puedan mover
-            ClientRpcParams clientRpcParams = new ClientRpcParams
-            {
-                Send = new ClientRpcSendParams
-                {
-                    TargetClientIds = GetIdTeams(TEAM2_ID)
-                }
-            };
-            if (clientRpcParams.Send.TargetClientIds == null)
-            {
-                Debug.Log("el contenido es null y no se envian ids");
-            }
-
-            Debug.Log("Se procede a realizar el clientrpc");
-            CanMoveRestrictClientRpc(clientRpcParams);
+            RestrictMovement(TEAM2_ID);
         }
+    }
+
+    void RestrictMovement(int team)
+    {
+        Debug.Log("se alcanzo tamaño maximo de jugadores");
+        // creacion de parametros para que solo los del equipo se puedan mover
+        ClientRpcParams clientRpcParams = new ClientRpcParams
+        {
+            Send = new ClientRpcSendParams
+            {
+                TargetClientIds = GetIdTeams(team)
+            }
+        };
+        if (clientRpcParams.Send.TargetClientIds == null)
+        {
+            Debug.Log("el contenido es null y no se envian ids");
+        }
+
+        Debug.Log("Se procede a realizar el clientrpc");
+        CanMoveRestrictClientRpc(clientRpcParams);
     }
 
     List<ulong> GetIdTeams(int team)
@@ -226,6 +222,7 @@ public class Player : NetworkBehaviour
         if (clientRpcParams.Send.TargetClientIds.Count == 0)
         {
             Debug.Log(" el contenido de los clientRpcParams es NULL *********************************");
+            return;
         }
         /*
         foreach (ulong ide in clientRpcParams.Send.TargetClientIds)
