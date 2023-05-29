@@ -39,7 +39,7 @@ public class Player : NetworkBehaviour
     {
         rend = GetComponent<Renderer>();
         canMove = true;
-        oldTeam = 0;
+        oldTeam = SIN_TEAM_ID;
     }
 
     public override void OnNetworkSpawn()
@@ -50,7 +50,7 @@ public class Player : NetworkBehaviour
         if (IsOwner)
         {
             MoverAlInicioServerRpc();
-            MyTeam.Value = 0;
+            MyTeam.Value = SIN_TEAM_ID;
         }
 
         if (!IsOwner)
@@ -144,7 +144,7 @@ public class Player : NetworkBehaviour
             CanMoveFreeClientRpc();
         }
         // se le asigna que pertece a sin equipo
-        MyTeam.Value = 0;
+        MyTeam.Value = SIN_TEAM_ID;
     }
 
     void Equipo1()
