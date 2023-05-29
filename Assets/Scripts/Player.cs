@@ -33,7 +33,7 @@ public class Player : NetworkBehaviour
     // variables para controlar los tamaños de teams
     private static int team1Size = 0;
     private static int team2Size = 0;
-    private const int MAX_TEAM_SIZE = 1;
+    private static int maxTeamSize = 1;
 
     private void Awake()
     {
@@ -139,7 +139,7 @@ public class Player : NetworkBehaviour
             team2Size--;
         }
         // si en la resta ya no hay el numeor maximo en algun equipo se libera el movmiento
-        if (team1Size < MAX_TEAM_SIZE || team2Size < MAX_TEAM_SIZE)
+        if (team1Size < maxTeamSize || team2Size < maxTeamSize)
         {
             CanMoveFreeClientRpc();
         }
@@ -154,7 +154,7 @@ public class Player : NetworkBehaviour
         // se le asigna un color aleatorio de los de su equipo
         ColorPlayer.Value = ColorDisponibleLista(playerColorsTeam1);
         // si se alcanza el maximo de miembros de equipo se restringe el movimiento
-        if (team1Size == MAX_TEAM_SIZE)
+        if (team1Size == maxTeamSize)
         {
             RestrictMovement(TEAM1_ID);
         }
@@ -167,7 +167,7 @@ public class Player : NetworkBehaviour
         // se le asigna un color aleatorio de los de su equipo
         ColorPlayer.Value = ColorDisponibleLista(playerColorsTeam2);
         // si se alcanza el maximo de miembros de equipo se restringe el movimiento
-        if (team2Size == MAX_TEAM_SIZE)
+        if (team2Size == maxTeamSize)
         {
             RestrictMovement(TEAM2_ID);
         }
@@ -224,23 +224,14 @@ public class Player : NetworkBehaviour
             Debug.Log(" el contenido de los clientRpcParams es NULL *********************************");
             return;
         }
-        /*
-        foreach (ulong ide in clientRpcParams.Send.TargetClientIds)
-        {
-            Debug.Log("bulce de movimiento, mi ide es: " + OwnerClientId + " los ide de clientes que se mueven " + ide);
-            if (ide != OwnerClientId)
-            {
-                Debug.Log("no se mueve");
-                canMove = false;
-            }else if (ide == OwnerClientId)
-            {
-                Debug.Log("se mueve");
-                canMove = true;
-            }
-        }*/
         
         List<ulong> u = (List<ulong>)clientRpcParams.Send.TargetClientIds;
-        Debug.Log("id de la posicion 0 es: " + u[0]);
+        if (u == null)
+        {
+            Debug.Log("la lista de clientes es nula no se hace nada");
+            return;
+        }
+
         if (!u.Contains(OwnerClientId))
         {
             canMove = false;
