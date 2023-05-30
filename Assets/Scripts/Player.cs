@@ -156,6 +156,12 @@ public class Player : NetworkBehaviour
         // si se alcanza el maximo de miembros de equipo se restringe el movimiento
         if (team1Size == maxTeamSize)
         {
+            /*
+             * Como no consegui hacer funcionar el filtrado de clientes por parametros la funcion la dejo comentada
+             * y llamo a otra que hace un bucle de clientes y llama por id directamente al clientRPC de ese ID
+             */
+            //RestrictMovementWithParams(TEAM1_ID);
+
             RestrictMovement(TEAM1_ID);
         }
     }
@@ -169,18 +175,51 @@ public class Player : NetworkBehaviour
         // si se alcanza el maximo de miembros de equipo se restringe el movimiento
         if (team2Size == maxTeamSize)
         {
+            /*
+             * Como no consegui hacer funcionar el filtrado de clientes por parametros la funcion la dejo comentada
+             * y llamo a otra que hace un bucle de clientes y llama por id directamente al clientRPC de ese ID
+             */
+            //RestrictMovementWithParams(TEAM2_ID);
+
             RestrictMovement(TEAM2_ID);
         }
     }
 
+    // funcion de restriccion de movimiento sin pasar parametros
     void RestrictMovement(int team)
     {
+        // si no es servidor no hace nada
+        if (!IsServer)
+        {
+            return;
+        }
+        // se recorren los clientes y se llama a su restringir movimiento
+        foreach (ulong uid in NetworkManager.Singleton.ConnectedClientsIds)
+        {
+            if (NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(uid).GetComponent<Player>().MyTeam.Value != team)
+            {
+                NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(uid).GetComponent<Player>().CanMoveRestrictClientRpc();
+            }
+        }
+
+    }
+
+    // funcion que restringe movimiento pasando los IDs por parametros del client RPC no funciona
+    void RestrictMovementWithParams(int team)
+    {
+        // si no es servidor no hace nada
+        if (!IsServer)
+        {
+            return;
+        }
+
         Debug.Log("se alcanzo tamaño maximo de jugadores");
         // creacion de parametros para que solo los del equipo se puedan mover
         ClientRpcParams clientRpcParams = new ClientRpcParams
         {
             Send = new ClientRpcSendParams
             {
+                // se rellena la lista con una funcion que obtiene solo los ids de los jugadores que se pueden mover
                 TargetClientIds = GetIdTeams(team)
             }
         };
@@ -190,9 +229,10 @@ public class Player : NetworkBehaviour
         }
 
         Debug.Log("Se procede a realizar el clientrpc");
-        CanMoveRestrictClientRpc(clientRpcParams);
+        CanMoveRestrictWithParamsClientRpc(clientRpcParams);
     }
 
+    // funcion para poder rellenar la lista deIDs de jugadores que no se pueden mover
     List<ulong> GetIdTeams(int team)
     {
         List<ulong> teamids = new List<ulong>();
@@ -218,26 +258,36 @@ public class Player : NetworkBehaviour
     [ClientRpc]
     void CanMoveRestrictClientRpc(ClientRpcParams clientRpcParams = default)
     {
+        // se bloquea el movimiento
+        canMove = false;
+    }
+
+    [ClientRpc]
+    void CanMoveRestrictWithParamsClientRpc(ClientRpcParams clientRpcParams = default)
+    {
         //Debug.Log(clientRpcParams.Send.TargetClientIds[0]);
         if (clientRpcParams.Send.TargetClientIds.Count == 0)
         {
-            Debug.Log(" el contenido de los clientRpcParams es NULL *********************************");
+            Debug.Log(" el contenido de los clientRpcParams es NULL o esta vacia");
             return;
         }
-        
+        // cas a una lista para poder usar Contains
         List<ulong> u = (List<ulong>)clientRpcParams.Send.TargetClientIds;
+        // si la lista original falla en el casteo o da null no s ehace nada
         if (u == null)
         {
             Debug.Log("la lista de clientes es nula no se hace nada");
             return;
         }
-
+        // si el id del owner no esta en la lista no se puede mover
         if (!u.Contains(OwnerClientId))
         {
             canMove = false;
         }
 
     }
+
+    
 
     public void Mover()
     {
