@@ -13,18 +13,24 @@ public class Player : NetworkBehaviour
     // lista con los materiales de los colores que puede ser el player segun el Team
     public List<Color> playerColorsTeam1;
     public List<Color> playerColorsTeam2;
+
     // color que se asigna a los que no tienen team
     public Color playerColorSinTeam;
-    // variable para guardar el equipo al que pertenece 0 = sin equipo, 1= equipo 1, 2 = equipo 2
+
+    // constantes para guardar el equipo al que pertenece 0 = sin equipo, 1= equipo 1, 2 = equipo 2
     private const int SIN_TEAM_ID = 0;
     private const int TEAM1_ID = 1;
     private const int TEAM2_ID = 2;
+
+    // variable que almacena el equipo justo anterior que tenia
     public int oldTeam;
 
     // lista que se usara para clonar y saber que colores disponibles hay
     private List<Color> disponibles;
+
     // renderrer para poder cambiar el color al player
     private Renderer rend;
+
     // variable que controla si se pueden mover
     private bool canMove;
 
@@ -38,56 +44,61 @@ public class Player : NetworkBehaviour
 
     private void Awake()
     {
+        // se obtiene el renderer par ala movidificacion
         rend = GetComponent<Renderer>();
-        canMove = true;
-        CanMove.Value = canMove;
+        // se pone como antiguo equipo el 0
         oldTeam = SIN_TEAM_ID;
     }
 
     public override void OnNetworkSpawn()
     {
+        // subscripciones delegate para las variables de red
         ColorPlayer.OnValueChanged += OnPlayerColorChanged;
         MyTeam.OnValueChanged += OnMyTeamChanged;
         CanMove.OnValueChanged += OnCanMoveChanged;
 
         if (IsOwner)
         {
+            // se mueve al inicio
             MoverAlInicioServerRpc();
+            // se le asigna el equipo 0
             MyTeam.Value = SIN_TEAM_ID;
-            Debug.Log("pregunta si se puede mover");
+            // en el momento de spawn pregunta si se puede mover por si se da la situacion de que algun equipo este lleno y no se pueda mover
             CanIMoveServerRpc();
-            Debug.Log("me puedo mover?: " + canMove);
         }
 
         if (!IsOwner)
         {
+            // si no es propietario se sincroniza el color
             rend.material.color = ColorPlayer.Value;
         }
     }
 
     public override void OnNetworkDespawn()
     {
+        // desuscripciones delegate a las variables de red
         ColorPlayer.OnValueChanged -= OnPlayerColorChanged;
         MyTeam.OnValueChanged -= OnMyTeamChanged;
         CanMove.OnValueChanged -= OnCanMoveChanged;
     }
 
-    private void OnCanMoveChanged(bool previousValue, bool newValue)
+    void Update()
     {
-        canMove = newValue;
+        // si eres owner mueve con los imputs
+        if (IsOwner && canMove)
+        {
+            // se llama al server RPC para que efectue el movimiento dle personaje con los calculos ya hechos de speed y time.deltatime
+            MoveServerRpc(new Vector3(Input.GetAxis("Horizontal"), 0f, Input.GetAxis("Vertical")) * speed * Time.deltaTime);
+            // si el usuario pulsa la tecla "M" asociazada al input RestartPosition se le movera a una posicion random del inicio
+            if (Input.GetButtonDown("RestartPosition"))
+            {
+                MoverAlInicioServerRpc();
+            }
+
+        }
     }
 
-    private void OnPlayerColorChanged(Color previousValue, Color newValue)
-    {
-        rend.material.color = newValue;
-    }
-
-    private void OnMyTeamChanged(int previousValue, int newValue)
-    {
-        oldTeam = previousValue;
-    }
-
-
+    // serverrpc para mover al inicio
     [ServerRpc]
     public void MoverAlInicioServerRpc(ServerRpcParams rpcParams = default)
     {
@@ -98,19 +109,16 @@ public class Player : NetworkBehaviour
 
     }
 
+    // serverrpc que almacena si el player se puede mover o no
     [ServerRpc]
     void CanIMoveServerRpc(ServerRpcParams serverRpcParams = default)
     {
-        Debug.Log("tamaño equipo 1: " + team1Size + "la " + (team1Size < maxTeamSize));
-        Debug.Log("tamaño equipo 2: " + team2Size + "la " + (team2Size < maxTeamSize));
         if (team1Size < maxTeamSize && team2Size < maxTeamSize)
         {
             CanMove.Value = true;
-            Debug.Log("te puedes mover");
         }
         else
         {
-            Debug.Log("no te puedes mover");
             CanMove.Value = false;
         }
 
@@ -149,6 +157,51 @@ public class Player : NetworkBehaviour
 
     }
 
+    [ClientRpc]
+    void CanMoveFreeClientRpc()
+    {
+        // se deja movimiento libre
+        CanMove.Value = true;
+    }
+
+    [ClientRpc]
+    void CanMoveRestrictClientRpc(ClientRpcParams clientRpcParams = default)
+    {
+        // se bloquea el movimiento
+        CanMove.Value = false;
+    }
+
+    [ClientRpc]
+    void CanMoveRestrictWithParamsClientRpc(ClientRpcParams clientRpcParams = default)
+    {
+        //Debug.Log(clientRpcParams.Send.TargetClientIds[0]);
+        if (clientRpcParams.Send.TargetClientIds.Count == 0)
+        {
+            Debug.Log(" el contenido de los clientRpcParams es NULL o esta vacia");
+            return;
+        }
+        // cas a una lista para poder usar Contains
+        List<ulong> u = (List<ulong>)clientRpcParams.Send.TargetClientIds;
+        // si la lista original falla en el casteo o da null no s ehace nada
+        if (u == null)
+        {
+            Debug.Log("la lista de clientes es nula no se hace nada");
+            return;
+        }
+        // si el id del owner no esta en la lista no se puede mover
+        if (!u.Contains(OwnerClientId))
+        {
+            canMove = false;
+        }
+
+    }
+
+    static Vector3 GetRandomInicioPosition()
+    {
+        // se genera una posicion aleatoria dentro de los margenes del plano sin equipo
+        return new Vector3(Random.Range(-3f, 3f), 1f, Random.Range(-3f, 3f));
+    }
+
     void Sinequipo(ulong clientid)
     {
         // se asigna el color sin equipo
@@ -168,7 +221,7 @@ public class Player : NetworkBehaviour
             Debug.Log("Se resta en el equipo 2");
             team2Size--;
         }
-        // si en la resta ya no hay el numeor maximo en algun equipo se libera el movmiento
+        // si en la resta ya no hay el numero maximo en los equipos se livera movimiento
         if (team1Size < maxTeamSize && team2Size < maxTeamSize)
         {
             Debug.Log("se livera el movimiento");
@@ -223,7 +276,7 @@ public class Player : NetworkBehaviour
         {
             return;
         }
-        // se recorren los clientes y se llama a su restringir movimiento
+        // se recorren los clientes y se llama a su liverar movimiento
         foreach (ulong uid in NetworkManager.Singleton.ConnectedClientsIds)
         {
             NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(uid).GetComponent<Player>().CanMoveFreeClientRpc();
@@ -293,52 +346,6 @@ public class Player : NetworkBehaviour
         return teamids;
     }
 
-    [ClientRpc]
-    void CanMoveFreeClientRpc()
-    {
-        // se deja movimiento libre
-        CanMove.Value = true;
-    }
-
-    [ClientRpc]
-    void CanMoveRestrictClientRpc(ClientRpcParams clientRpcParams = default)
-    {
-        // se bloquea el movimiento
-        CanMove.Value = false;
-    }
-
-    [ClientRpc]
-    void CanMoveRestrictWithParamsClientRpc(ClientRpcParams clientRpcParams = default)
-    {
-        //Debug.Log(clientRpcParams.Send.TargetClientIds[0]);
-        if (clientRpcParams.Send.TargetClientIds.Count == 0)
-        {
-            Debug.Log(" el contenido de los clientRpcParams es NULL o esta vacia");
-            return;
-        }
-        // cas a una lista para poder usar Contains
-        List<ulong> u = (List<ulong>)clientRpcParams.Send.TargetClientIds;
-        // si la lista original falla en el casteo o da null no s ehace nada
-        if (u == null)
-        {
-            Debug.Log("la lista de clientes es nula no se hace nada");
-            return;
-        }
-        // si el id del owner no esta en la lista no se puede mover
-        if (!u.Contains(OwnerClientId))
-        {
-            canMove = false;
-        }
-
-    }
-
-
-
-    public void Mover()
-    {
-        transform.position = GetRandomInicioPosition();
-    }
-
     private Color ColorDisponibleLista(List<Color> playerColorsTeam)
     {
         // lista para guardar los colores de los clientes conectados
@@ -364,28 +371,6 @@ public class Player : NetworkBehaviour
         }
         // se devuelve un color aleatorio de los disponibles
         return disponibles[Random.Range(0, disponibles.Count)];
-    }
-
-    static Vector3 GetRandomInicioPosition()
-    {
-        // se genera una posicion aleatoria dentro de los margenes del plano sin equipo
-        return new Vector3(Random.Range(-3f, 3f), 1f, Random.Range(-3f, 3f));
-    }
-
-    void Update()
-    {
-        // si eres owner mueve con los imputs
-        if (IsOwner && canMove)
-        {
-            // se llama al server RPC para que efectue el movimiento dle personaje con los calculos ya hechos de speed y time.deltatime
-            MoveServerRpc(new Vector3(Input.GetAxis("Horizontal"), 0f, Input.GetAxis("Vertical")) * speed * Time.deltaTime);
-            // si el usuario pulsa la tecla "M" asociazada al input RestartPosition se le movera a una posicion random del inicio
-            if (Input.GetButtonDown("RestartPosition"))
-            {
-                MoverAlInicioServerRpc();
-            }
-
-        }
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -414,5 +399,27 @@ public class Player : NetworkBehaviour
                 ColorEquipoServerRpc(TEAM2_ID);
             }
         }
+    }
+
+    // metodos que se suscriben a los delegates
+    private void OnCanMoveChanged(bool previousValue, bool newValue)
+    {
+        canMove = newValue;
+    }
+
+    private void OnPlayerColorChanged(Color previousValue, Color newValue)
+    {
+        rend.material.color = newValue;
+    }
+
+    private void OnMyTeamChanged(int previousValue, int newValue)
+    {
+        oldTeam = previousValue;
+    }
+
+    // metodo que mueve al player al inicio solo se invoca desde un servidor puro
+    public void Mover()
+    {
+        transform.position = GetRandomInicioPosition();
     }
 }
