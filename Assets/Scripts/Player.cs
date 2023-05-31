@@ -8,6 +8,7 @@ public class Player : NetworkBehaviour
     // variable network para almacenar el color del player
     public NetworkVariable<Color> ColorPlayer;
     public NetworkVariable<int> MyTeam;
+    public NetworkVariable<bool> CanMove;
 
     // lista con los materiales de los colores que puede ser el player segun el Team
     public List<Color> playerColorsTeam1;
@@ -39,6 +40,7 @@ public class Player : NetworkBehaviour
     {
         rend = GetComponent<Renderer>();
         canMove = true;
+        CanMove.Value = canMove;
         oldTeam = SIN_TEAM_ID;
     }
 
@@ -46,11 +48,15 @@ public class Player : NetworkBehaviour
     {
         ColorPlayer.OnValueChanged += OnPlayerColorChanged;
         MyTeam.OnValueChanged += OnMyTeamChanged;
+        CanMove.OnValueChanged += OnCanMoveChanged;
 
         if (IsOwner)
         {
             MoverAlInicioServerRpc();
             MyTeam.Value = SIN_TEAM_ID;
+            Debug.Log("pregunta si se puede mover");
+            CanIMoveServerRpc();
+            Debug.Log("me puedo mover?: " + canMove);
         }
 
         if (!IsOwner)
@@ -63,6 +69,12 @@ public class Player : NetworkBehaviour
     {
         ColorPlayer.OnValueChanged -= OnPlayerColorChanged;
         MyTeam.OnValueChanged -= OnMyTeamChanged;
+        CanMove.OnValueChanged -= OnCanMoveChanged;
+    }
+
+    private void OnCanMoveChanged(bool previousValue, bool newValue)
+    {
+        canMove = newValue;
     }
 
     private void OnPlayerColorChanged(Color previousValue, Color newValue)
@@ -79,11 +91,29 @@ public class Player : NetworkBehaviour
     [ServerRpc]
     public void MoverAlInicioServerRpc(ServerRpcParams rpcParams = default)
     {
-        if (NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(rpcParams.Receive.SenderClientId).GetComponent<Player>().canMove)
+        if (CanMove.Value)
         {
             transform.position = GetRandomInicioPosition();
-
         }
+
+    }
+
+    [ServerRpc]
+    void CanIMoveServerRpc(ServerRpcParams serverRpcParams = default)
+    {
+        Debug.Log("tamaño equipo 1: " + team1Size + "la " + (team1Size < maxTeamSize));
+        Debug.Log("tamaño equipo 2: " + team2Size + "la " + (team2Size < maxTeamSize));
+        if (team1Size < maxTeamSize && team2Size < maxTeamSize)
+        {
+            CanMove.Value = true;
+            Debug.Log("te puedes mover");
+        }
+        else
+        {
+            Debug.Log("no te puedes mover");
+            CanMove.Value = false;
+        }
+
 
     }
 
@@ -139,9 +169,10 @@ public class Player : NetworkBehaviour
             team2Size--;
         }
         // si en la resta ya no hay el numeor maximo en algun equipo se libera el movmiento
-        if (team1Size < maxTeamSize || team2Size < maxTeamSize)
+        if (team1Size < maxTeamSize && team2Size < maxTeamSize)
         {
-            CanMoveFreeClientRpc();
+            Debug.Log("se livera el movimiento");
+            FreeMovement();
         }
         // se le asigna que pertece a sin equipo
         MyTeam.Value = SIN_TEAM_ID;
@@ -182,6 +213,20 @@ public class Player : NetworkBehaviour
             //RestrictMovementWithParams(TEAM2_ID);
 
             RestrictMovement(TEAM2_ID);
+        }
+    }
+
+    void FreeMovement()
+    {
+        // si no es servidor no hace nada
+        if (!IsServer)
+        {
+            return;
+        }
+        // se recorren los clientes y se llama a su restringir movimiento
+        foreach (ulong uid in NetworkManager.Singleton.ConnectedClientsIds)
+        {
+            NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(uid).GetComponent<Player>().CanMoveFreeClientRpc();
         }
     }
 
@@ -252,14 +297,14 @@ public class Player : NetworkBehaviour
     void CanMoveFreeClientRpc()
     {
         // se deja movimiento libre
-        canMove = true;
+        CanMove.Value = true;
     }
 
     [ClientRpc]
     void CanMoveRestrictClientRpc(ClientRpcParams clientRpcParams = default)
     {
         // se bloquea el movimiento
-        canMove = false;
+        CanMove.Value = false;
     }
 
     [ClientRpc]
@@ -287,7 +332,7 @@ public class Player : NetworkBehaviour
 
     }
 
-    
+
 
     public void Mover()
     {
